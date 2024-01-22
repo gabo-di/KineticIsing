@@ -3,6 +3,11 @@ using LinearAlgebra
 using LoopVectorization
 using Integrals
 using SparseArrays
+import Base.\
+
+# this is in order to use SimpleNewtonRaphson(), see raphson.jl:50 
+# also that wee need to use not inplace function so we not do a cache for the jacobian, see utils.jl:156
+\(x::AbstractVector, y::AbstractVector) = y ./ x
 
 function TAP_eq(x, H, Vii)
     tanh.(H .- x.*Vii) .- x
@@ -18,7 +23,7 @@ function solve_TAP_eq(x0, H, Vii, TOL=1e-15)
     df(x,p) = diff_TAP_eq(x, p[1], p[2])
     F = NonlinearFunction(f, jac=df)
     prob = NonlinearProblem(F, x0, [H, Vii]; abstol=TOL)
-    sol = solve(prob,NewtonRaphson())
+    sol = solve(prob,SimpleNewtonRaphson())
     sol.u
 end
 
@@ -179,11 +184,6 @@ function update_C_P_t1_o1(H, J, m, m_p, C_p)
 end
 
 #PLEFKA2[t] order 2
-import Base.\
-
-# this is in orther to use SimpleNewtonRaphson(), see raphson.jl:50 
-# also that wee need to use not inplace function so we not do a cache for the jacobian utils.jl:156
-\(x::AbstractVector, y::AbstractVector) = y ./ x
 
 function TAP_eq_D(x, Heff, V)
     x .- Heff .+ tanh.(x) .* V
