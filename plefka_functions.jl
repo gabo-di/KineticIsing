@@ -1,8 +1,9 @@
 using NonlinearSolve
 using LinearAlgebra
 using LoopVectorization
-using Integrals
+# using Integrals
 using SparseArrays
+using Trapz
 import Base.\
 
 # this is in order to use SimpleNewtonRaphson(), see raphson.jl:50 
@@ -102,27 +103,33 @@ end
 
 # PLEFKA[t-1] order 1
 function integrate_1DGaussian(f, args)
-    prob = IntegralProblem((x,p)->f(x,p...), -4, 4, args)
-    sol = solve(prob, QuadGKJL(); reltol = 1e-5, abstol = 1e-5)
-    return sol.u
+    x = collect(range(-4, 4, length=20))
+    y = f(x, args...) 
+    trapz(x, y)
+    # prob = IntegralProblem((x,p)->f(x,p...), -4, 4, args)
+    # sol = solve(prob, QuadGKJL(); reltol = 1e-3, abstol = 1e-3)
+    # return sol.u
 end
 
 function integrate_2DGaussian(f,args)
-    prob = IntegralProblem((x,p)->f(x[1],x[2],p...), [-4, -4], [4, 4], args)
-    sol = solve(prob, HCubatureJL(); reltol = 1e-5, abstol = 1e-5)
-    return sol.u
+    x = collect(range(-4, 4, length=20))
+    y = f(x, x', args...) 
+    trapz((x, x), y)
+    # prob = IntegralProblem((x,p)->f(x[1],x[2],p...), [-4, -4], [4, 4], args)
+    # sol = solve(prob, HCubatureJL(); reltol = 1e-3, abstol = 1e-3)
+    # return sol
 end
 
 function dT1(x, g, D)
-    1/sqrt(2pi) * exp(-x^2/2) * tanh(g + x*sqrt(D))
+    return @. 1/sqrt(2pi) * exp(-x^2/2) * tanh(g + x*sqrt(D))
 end
 
 function dT1_1(x, g, D)
-    1/sqrt(2pi) * exp(-x^2/2) * (1 - tanh(g + x*sqrt(D)^2))
+    return @. 1/sqrt(2pi) * exp(-x^2/2) * (1 - tanh(g + x*sqrt(D)^2))
 end
 
 function dT1_2(x, g, D)
-    1/sqrt(2pi) * exp(-x^2/2) * (-2*tanh(g + x*sqrt(D))) * (1 - tanh(g + x*sqrt(D)^2))
+    return @. 1/sqrt(2pi) * exp(-x^2/2) * (-2*tanh(g + x*sqrt(D))) * (1 - tanh(g + x*sqrt(D)^2))
 end
 
 function update_m_P_t1_o1(H, J, m_p)
@@ -145,18 +152,14 @@ function update_D_P_t1_o1(H, J, m_p, C_p)
     a .* J * C_p
 end
 
+function dT2_rot(p, gx, gy, Dx, Dy, rho)
+    return @. 1/sqrt(2pi) * exp(-p^2/2) * tanh(gx + p*sqrt(1+rho)*sqrt(Dx/2)) *
+    tanh(gy + p*sqrt(1+rho)*sqrt(Dy/2)) 
+end
+
 function dT2_rot(p, n, gx, gy, Dx, Dy, rho)
-    if isnothing(n)
-        return 1/sqrt(2pi) * exp(-p^2/2) * tanh(gx + p*sqrt(1+rho)*sqrt(Dx/2)) *
-        tanh(gy + p*sqrt(1+rho)*sqrt(Dy/2)) 
-    elseif isnothing(p) 
-        return 1/sqrt(2pi) * exp(-n^2/2) * tanh(gx + n*sqrt(1-rho)*sqrt(Dx/2)) *
-        tanh(gy - p*sqrt(1-rho)*sqrt(Dy/2)) 
-        # ojo  in code is -p^2 but makes no sense
-    else
-        return 1/(2pi) * exp(-(p^2 + n^2)/2) * tanh(gx + (p*sqrt(1+rho) + n*sqrt(1-rho))*sqrt(Dx/2)) *
-        tanh(gy + (p*sqrt(1+rho) - n*sqrt(1-rho))*sqrt(Dy/2)) 
-    end
+    return @. 1/(2pi) * exp(-(p^2 + n^2)/2) * tanh(gx + (p*sqrt(1+rho) + n*sqrt(1-rho))*sqrt(Dx/2)) *
+    tanh(gy + (p*sqrt(1+rho) - n*sqrt(1-rho))*sqrt(Dy/2)) 
 end
 
 function update_C_P_t1_o1(H, J, m, m_p, C_p)
@@ -173,7 +176,7 @@ function update_C_P_t1_o1(H, J, m, m_p, C_p)
         for j in (i+1:n)
             if rho[i,j] > (1 - 1e-5)
                 # ojo en el original usa 1 - 1e5, pero eso no tiene sentido, la idea es evitar que 1-rho^2 < 0
-                C[i,j] = integrate_1DGaussian(dT2_rot, (nothing, g[i], g[j], D[i], D[j], rho[i,j])) - m[i]*m[j]
+                C[i,j] = integrate_1DGaussian(dT2_rot, (g[i], g[j], D[i], D[j], rho[i,j])) - m[i]*m[j]
             else
                 C[i,j] = integrate_2DGaussian(dT2_rot, (g[i], g[j], D[i], D[j], rho[i,j])) - m[i]*m[j]
             end

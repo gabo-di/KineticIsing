@@ -11,12 +11,12 @@ function bool2int(x, val=0)
     end
 end
 
-function bitfield(n, size)
-    digits(n, base=2, pad=size) |> reverse
+function bitfield(n, sze)
+    digits(n, base=2, pad=sze) |> reverse
 end
 
 struct Ising_v1{T}
-    size::Int
+    sze::Int
     H::AbstractVector{T}
     J::AbstractMatrix{T}
     Beta::T
@@ -26,32 +26,32 @@ end
 
 Ising{T} = Ising_v1{T}
 
-function randomizeState(::Type{T}, size, rng::AbstractRNG ) where T
-    Array{T}(rand(rng, (-1,1), size)) 
+function randomizeState(::Type{T}, sze, rng::AbstractRNG ) where T
+    Array{T}(rand(rng, (-1,1), sze)) 
 end
 
-function Ising(::Type{T}, size, rng::AbstractRNG=Random.default_rng()) where T
-    Ising{T}(size, zeros(T, size), zeros(T, size, size), T(1), randomizeState(T, size, rng))
+function Ising(::Type{T}, sze, rng::AbstractRNG=Random.default_rng()) where T
+    Ising{T}(sze, zeros(T, sze), zeros(T, sze, sze), T(1), randomizeState(T, sze, rng))
 end
 
 function randomFields!(self::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
-    self.H .= rand(rng, T, self.size).*2 .- 1
+    self.H .= rand(rng, T, self.sze).*2 .- 1
 end
 
 function randomWiring!(self::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
-    self.J .= randn(rng, T, self.size, self.size )
+    self.J .= randn(rng, T, self.sze, self.sze )
 end 
 
 function randomizeState!(self::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
-    self.s = randomizeState(T, self.size, rng)
+    self.s = randomizeState(T, self.sze, rng)
 end
 
 function parallelUpdate!(self::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
     h = self.H + self.J*self.s
     if typeof(self.H) <: CuArray
-        r = CUDA.rand(T, self.size)
+        r = CUDA.rand(T, self.sze)
     else
-        r = rand(rng, T, self.size)
+        r = rand(rng, T, self.sze)
     end
     self.s .= 2*(2*self.Beta*h .> log.(1 ./ r .- 1)) .- 1
     return nothing
@@ -83,7 +83,7 @@ function gpu(ising::Ising{T}) where{T}
     H = ising.H |> gpu
     J = ising.J |> gpu
     s = ising.s |> gpu
-    Ising{T}(ising.size, H, J, ising.Beta, s)
+    Ising{T}(ising.sze, H, J, ising.Beta, s)
 end
 
 
