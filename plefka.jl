@@ -1,6 +1,8 @@
 using ComponentArrays
 using LinearAlgebra
 using Random
+using CUDA
+using IfElse
 
 include("plefka_functions.jl")
 
@@ -30,7 +32,6 @@ end
 struct IsingCache_v0{T} <: AbstractIsingCache{T}
     h::AbstractArray{T,1}
     r::AbstractArray{T,1}
-    z::AbstractArray{Bool,1}
 end
 
 
@@ -43,7 +44,7 @@ function Ising(::Type{T}, sze::Int, rng::AbstractRNG=Random.default_rng()) where
 end
 
 function IsingCache_v0(::Type{T}, sze::Int) where T
-    IsingCache_v0{T}(zeros(T, sze), zeros(T, sze), zeros(Bool,sze))
+    IsingCache_v0{T}(zeros(T, sze), zeros(T, sze))
 end
 
 function randomFields!(ising::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
@@ -58,41 +59,49 @@ function randomizeState!(ising::Ising{T}, rng::AbstractRNG=Random.default_rng())
     ising.s .= randomizeState(T, ising.sze, rng)
 end
 
-function parallelUpdate!(ising::Ising{T}, rng::AbstractRNG=Random.default_rng()) where T
-    h = ising.H + ising.J*ising.s
-    if typeof(ising.H) <: CuArray
-        r = CUDA.rand(T, ising.sze)
-    else
-        r = rand(rng, T, ising.sze)
-    end
-    ising.s .= 2*(2*ising.Beta*h .> log.(1 ./ r .- 1)) .- 1
+function parallelUpdate!(ising::Ising{T}, rng::AbstractRNG) where T
+    h = (ising.H + ising.J*ising.s) * T(2*ising.Beta)
+    r = rand(rng, T, ising.sze)
+    ising.s .= ifelse.( sigmoid.(h)<r, T(1), T(-1) )
     return nothing
 end
 
 function parallelUpdate_cpu!(ising::Ising{T}, ising_cache::IsingCache_v0{T}, rng::AbstractRNG=Random.default_rng()) where T
-    h = ising_cache.h
-    z = ising_cache.z
-    r = ising_cache.r
+    # benchmark is 11.029 s 640.62 KiB, 30_000 allocs
+    copy!(ising_cache.h, ising.H)
+    mul!(ising_cache.h, ising.J, ising.s, T(2*ising.Beta), T(2*ising.Beta))
 
-    h .= ising.H
-    mul!(h, ising.J, ising.s, T(1), T(1))
-    rand!(rng, r)
-    z .= 2*ising.Beta .* h .> log.(1 ./ r .- 1)
-    ising.s .= T(2) .* z .- T(1)
+    @turbo for i in eachindex(ising.s)
+        r = rand(rng,T)
+        ising.s[i] = ifelse(sigmoid(ising_cache.h[i])<r, T(1), T(-1))
+        # ising.s[i] = sign(r - sigmoid(ising_cache.h[i])
+    end
     return nothing
 end
 
-function parallelUpdate_gpu!(ising::Ising{T}, ising_cache::IsingCache_v0{T}, rng::AbstractRNG=CURAND.default_rng()) where T
-    h = ising_cache.h
-    z = ising_cache.z
-    r = ising_cache.r
+function sigmoid(x)
+    1 / (exp(-x)+1)
+end
 
-    h .= ising.H
-    mul!(h, ising.J, ising.s, T(1), T(1))
-    rand!(rng, r)
-    z .= 2*ising.Beta .* h .> log.(1 ./ r .- 1)
-    ising.s .= T(2) .* z .- T(1)
+function parallelUpdate_gpu!(ising::Ising{T}, ising_cache::IsingCache_v0{T}, rng::AbstractRNG=CURAND.default_rng()) where T
+    # benchmark is 471.232 ms, 1.48 MiB 27_000 allocs
+    copy!(ising_cache.h, ising.H)
+    mul!(ising_cache.h, ising.J, ising.s, T(2*ising.Beta), T(2*ising.Beta))
+    rand!(rng, ising_cache.r)
+    ising.s .= ifelse.( sigmoid.(ising_cache.h).<ising_cache.r, T(1), T(-1)  )
+    # ising.s .= sign.(ising_cache.r .- sigmoid.(ising_cache.h)) 
     return nothing
+end
+
+function copy_gpu(y,x)
+    index = (blockIdx().x - Int32(1)) * blockDim().x + threadIdx().x
+    stride = gridDim().x * blockDim().x
+    i = index
+    while i<=length(y)
+        @inbounds y[i] = x[i]
+        i += stride
+    end
+    return
 end
 
 function gpu(a::Array{T,N}) where {T,N}
@@ -107,11 +116,9 @@ function gpu(ising::Ising{T}) where{T}
 end
 
 function gpu(ising_cache::IsingCache_v0{T}) where{T}
-    ising_cache.
-    z = ising_cache.z |> gpu
     h = ising_cache.h |> gpu
     r = ising_cache.r |> gpu
-    IsingCache_v0{T}(h, r, z)
+    IsingCache_v0{T}(h, r)
 end
 
 ##########################
