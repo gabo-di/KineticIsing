@@ -7,7 +7,7 @@ includet("plefka.jl")
 
 function nsf(num, n=4)
     """n-Significant Figures"""
-    return round(num, digits=n-1)
+    return round(num, sigdigits=n)
 end
 
 function main()
@@ -23,6 +23,7 @@ function main()
     betas = collect( 1 .+ range(-1, 1, length=B) .* 0.3)
     for ib in 1:B 
         beta_ref = round(betas[ib], digits=3)
+
 
         EmP_t1_t = zeros(T + 1)
         EmP_t = zeros(T + 1)
@@ -75,6 +76,7 @@ function main()
         # Load data
         filename = "data/data-H0-" * string(H0) * "-J0-" * string(J0) * "-Js-" * string(
             Js) * "-N-" * string(sze) * "-R-" * string(R) * "-beta-" * string(beta_ref) * ".npz"
+        println()
         println(filename)
         data = npzread(filename)
         H = data["H"]
@@ -92,10 +94,10 @@ function main()
             CPexp_mean[t + 1] = mean(C_exp[:, :, t])
             DPexp_mean[t + 1] = mean(D_exp[:, :, t])
             # println("Exp",
-            #       string(t) * "/" * string(T),
-            #       mPexp_mean[t + 1],
-            #       CPexp_mean[t + 1],
-            #       DPexp_mean[t + 1])
+            #       " ", string(t) * "/" * string(T),
+            #       " ", mPexp_mean[t + 1],
+            #       " ", CPexp_mean[t + 1],
+            #       " ", DPexp_mean[t + 1])
         end
         mPexp_final = m_exp[:, T - 1]
         CPexp_final = C_exp[:, :, T - 1]
@@ -121,15 +123,6 @@ function main()
                     H, J, s0, sze)
         println(time_P_t)
 
-        # run Plefka[t-1] order 1
-        println("Plefka[t-1]")
-        time_P_t1 = calc_stuff!(CP_t1_mean, mP_t1_mean, DP_t1_mean,
-                    EmP_t1, ECP_t1, EDP_t1,
-                    m_exp, C_exp, D_exp,
-                    mP_t1_final, CP_t1_final, DP_t1_final,
-                    T, beta_ref, IsingPlefka_t1{Float64}(),
-                    H, J, s0, sze)
-        println(time_P_t1)
 
         # run Plefka[t-1] order 2
         println("Plefka2[t]")
@@ -141,6 +134,15 @@ function main()
                     H, J, s0, sze)
         println(time_P2_t)
 
+        # run Plefka[t-1] order 1
+        println("Plefka[t-1]")
+        time_P_t1 = calc_stuff!(CP_t1_mean, mP_t1_mean, DP_t1_mean,
+        EmP_t1, ECP_t1, EDP_t1,
+        m_exp, C_exp, D_exp,
+        mP_t1_final, CP_t1_final, DP_t1_final,
+        T, beta_ref, IsingPlefka_t1{Float64}(),
+        H, J, s0, sze)
+        println(time_P_t1)
 
     # Save results to file
 
@@ -213,8 +215,6 @@ function calc_stuff!(CP_mean, mP_mean, DP_mean,
     MI = MeanIsingModel(tt, sze, alg)
     initialize_state!(MI, s0)
 
-
-    # Run Plefka[t-1,t], order 2
     time_start = time()
     for t in 1:T
         update_P!(I, MI)
@@ -224,17 +224,24 @@ function calc_stuff!(CP_mean, mP_mean, DP_mean,
         EmP[t + 1] = mean((MI.m .- m_exp[:, t]).^2)
         ECP[t + 1] = mean((MI.C .- C_exp[:, :, t]).^2)
         EDP[t + 1] = mean((MI.D .- D_exp[:, :, t]).^2)
-        # print("beta",
-        #       beta_ref,
-        #       "P_t1_t_o2",
-        #       string(t) * "/" * string(T),
-        #       nsf(mP_mean[t + 1]),
-        #       nsf(CP_mean[t + 1]),
-        #       nsf(DP_mean[t + 1]),
-        #       nsf(EmP[t + 1]),
-        #       nsf(ECP[t + 1]),
-        #       nsf(EDP[t + 1]))
+        # println("beta",
+        #       " ", beta_ref,
+        #       " ", string(alg),
+        #       " ", string(t) * "/" * string(T),
+        #       " ", nsf(mP_mean[t + 1]),
+        #       " ", nsf(CP_mean[t + 1]),
+        #       " ", nsf(DP_mean[t + 1]),
+        #       " ", nsf(EmP[t + 1]),
+        #       " ", nsf(ECP[t + 1]),
+        #       " ", nsf(EDP[t + 1]))
     end
+    println("beta",
+          " ", beta_ref,
+          " ", string(alg),
+          " ", string(T) * "/" * string(T),
+          " ", nsf(mean(EmP)),
+          " ", nsf(mean(ECP)),
+          " ", nsf(mean(EDP)))
     mP_final .= MI.m
     CP_final .= MI.C
     DP_final .= MI.D

@@ -105,18 +105,30 @@ end
 function integrate_1DGaussian(f, args)
     x = collect(range(-4, 4, length=20))
     y = f(x, args...) 
+    # trapezoidal integration
     trapz(x, y)
+
+    # rectangle integration
+    # sum(y)*(x[2] - x[1])
+
+    # Adaptative integration
     # prob = IntegralProblem((x,p)->f(x,p...), -4, 4, args)
-    # sol = solve(prob, QuadGKJL(); reltol = 1e-3, abstol = 1e-3)
+    # sol = solve(prob, QuadGKJL(); reltol = 1e-8, abstol = 1e-8)
     # return sol.u
 end
 
 function integrate_2DGaussian(f,args)
     x = collect(range(-4, 4, length=20))
     y = f(x, x', args...) 
+    # trapezoidal integration
     trapz((x, x), y)
+
+    # rectangle integration
+    # sum(y)*(x[2] - x[1])^2
+
+    # Adaptative integration
     # prob = IntegralProblem((x,p)->f(x[1],x[2],p...), [-4, -4], [4, 4], args)
-    # sol = solve(prob, HCubatureJL(); reltol = 1e-3, abstol = 1e-3)
+    # sol = solve(prob, HCubatureJL(); reltol = 1e-8, abstol = 1e-8)
     # return sol
 end
 
@@ -125,11 +137,11 @@ function dT1(x, g, D)
 end
 
 function dT1_1(x, g, D)
-    return @. 1/sqrt(2pi) * exp(-x^2/2) * (1 - tanh(g + x*sqrt(D)^2))
+    return @. 1/sqrt(2pi) * exp(-x^2/2) * (1 - tanh(g + x*sqrt(D))^2)
 end
 
 function dT1_2(x, g, D)
-    return @. 1/sqrt(2pi) * exp(-x^2/2) * (-2*tanh(g + x*sqrt(D))) * (1 - tanh(g + x*sqrt(D)^2))
+    return @. 1/sqrt(2pi) * exp(-x^2/2) * (-2*tanh(g + x*sqrt(D))) * (1 - tanh(g + x*sqrt(D))^2)
 end
 
 function update_m_P_t1_o1(H, J, m_p)
@@ -149,6 +161,7 @@ function update_D_P_t1_o1(H, J, m_p, C_p)
     for i in eachindex(a)
         a[i] = integrate_1DGaussian(dT1_1, (g[i], D[i])) 
     end
+    # ein"i,ij,jl->il"(x,A,B) ≈ x .* A * B
     a .* J * C_p
 end
 
@@ -158,7 +171,8 @@ function dT2_rot(p, gx, gy, Dx, Dy, rho)
 end
 
 function dT2_rot(p, n, gx, gy, Dx, Dy, rho)
-    return @. 1/(2pi) * exp(-(p^2 + n^2)/2) * tanh(gx + (p*sqrt(1+rho) + n*sqrt(1-rho))*sqrt(Dx/2)) *
+    return @. 1/(2pi) * exp(-(p^2 + n^2)/2) *
+    tanh(gx + (p*sqrt(1+rho) + n*sqrt(1-rho))*sqrt(Dx/2)) *
     tanh(gy + (p*sqrt(1+rho) - n*sqrt(1-rho))*sqrt(Dy/2)) 
 end
 
@@ -171,7 +185,8 @@ function update_C_P_t1_o1(H, J, m, m_p, C_p)
     inv_D[D .> 0 ] = 1 ./ D[ D.> 0]
     #ein"i,k,ij,kj,j->ik"(x,y,A,B,z) ≈ x .* A * (z .* B') .* y'
     rho = sqrt.(inv_D) .* J * ((1 .- m_p.^2) .* J' ) .* sqrt.(inv_D)'
-    for i in eachindex(m)
+    # for i in eachindex(m)
+    Threads.@threads for i in eachindex(m)
         C[i,i] = 1 - m[i]^2
         for j in (i+1:n)
             if rho[i,j] > (1 - 1e-5)
