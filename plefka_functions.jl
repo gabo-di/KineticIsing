@@ -1,7 +1,7 @@
 using NonlinearSolve
 using LinearAlgebra
 using LoopVectorization
-# using Integrals
+#using Integrals
 using SparseArrays
 using Trapz
 import Base.\
@@ -114,7 +114,7 @@ function integrate_1DGaussian(f, args)
     # Adaptative integration
     # prob = IntegralProblem((x,p)->f(x,p...), -4, 4, args)
     # sol = solve(prob, QuadGKJL(); reltol = 1e-8, abstol = 1e-8)
-    # return sol.u
+    # return sol.u[1]
 end
 
 function integrate_2DGaussian(f,args)
@@ -129,7 +129,7 @@ function integrate_2DGaussian(f,args)
     # Adaptative integration
     # prob = IntegralProblem((x,p)->f(x[1],x[2],p...), [-4, -4], [4, 4], args)
     # sol = solve(prob, HCubatureJL(); reltol = 1e-8, abstol = 1e-8)
-    # return sol
+    # return sol.u[1]
 end
 
 function dT1(x, g, D)
