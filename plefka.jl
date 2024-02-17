@@ -62,7 +62,7 @@ end
 function parallelUpdate!(ising::Ising{T}, rng::AbstractRNG) where T
     h = (ising.H + ising.J*ising.s) * T(2*ising.Beta)
     r = rand(rng, T, ising.sze)
-    ising.s .= ifelse.( sigmoid.(h)<r, T(1), T(-1) )
+    ising.s .= ifelse.( sigmoid.(h)>=r, T(1), T(-1) )
     return nothing
 end
 
@@ -73,7 +73,7 @@ function parallelUpdate_cpu!(ising::Ising{T}, ising_cache::IsingCache_v0{T}, rng
 
     @turbo for i in eachindex(ising.s)
         r = rand(rng,T)
-        ising.s[i] = ifelse(sigmoid(ising_cache.h[i])<r, T(1), T(-1))
+        ising.s[i] = ifelse(sigmoid(ising_cache.h[i])>=r, T(1), T(-1))
         # ising.s[i] = sign(r - sigmoid(ising_cache.h[i])
     end
     return nothing
@@ -88,7 +88,7 @@ function parallelUpdate_gpu!(ising::Ising{T}, ising_cache::IsingCache_v0{T}, rng
     copy!(ising_cache.h, ising.H)
     mul!(ising_cache.h, ising.J, ising.s, T(2*ising.Beta), T(2*ising.Beta))
     rand!(rng, ising_cache.r)
-    ising.s .= ifelse.( sigmoid.(ising_cache.h).<ising_cache.r, T(1), T(-1)  )
+    ising.s .= ifelse.( sigmoid.(ising_cache.h).>=ising_cache.r, T(1), T(-1)  )
     # ising.s .= sign.(ising_cache.r .- sigmoid.(ising_cache.h)) 
     return nothing
 end
